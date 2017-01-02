@@ -1,14 +1,11 @@
 /*
 ionic-audio v1.3.1
- 
-Copyright 2016 Ariel Faur (https://github.com/arielfaur)
 
+Copyright 2016 Ariel Faur (https://github.com/arielfaur)
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -32,12 +29,12 @@ angular.module('ionic-audio').filter('time', function () {
 
 angular.module('ionic-audio').filter('duration', ['$filter', function ($filter) {
     return function (input) {
-        return (input > 0) ? $filter('time')(input) : '';
+        return (input > 0) ? $filter('time')(input) : '00:00';
     };
 }]);
 
 
-angular.module('ionic-audio').factory('MediaManager', ['$interval', '$timeout', '$window', function ($interval, $timeout, $window) {
+angular.module('ionic-audio').factory('MediaManager', ['$interval', '$timeout', '$window', '$rootScope', function ($interval, $timeout, $window, $rootScope) {
     var tracks = [], currentTrack, currentMedia, playerTimer;
 
     if (!$window.cordova && !$window.Media) {
@@ -51,7 +48,11 @@ angular.module('ionic-audio').factory('MediaManager', ['$interval', '$timeout', 
         pause: pause,
         stop: stop,
         seekTo: seekTo,
-        destroy: destroy
+        destroy: destroy,
+        rewindSec: rewindSec,
+        forwardSec: forwardSec,
+        moveTo: moveTo,
+        setRate:setRate
     };
 
     function find(track) {
@@ -69,7 +70,6 @@ angular.module('ionic-audio').factory('MediaManager', ['$interval', '$timeout', 
 
     /*
     Creates a new Media from a track object
-
      var track = {
          url: 'https://s3.amazonaws.com/ionic-audio/Message+in+a+bottle.mp3',
          artist: 'The Police',
@@ -208,6 +208,8 @@ angular.module('ionic-audio').factory('MediaManager', ['$interval', '$timeout', 
 
         if (angular.isFunction(this.onStatusChange))
             this.onStatusChange(status);
+
+        $rootScope.$broadcast('ionic-audio:statusChange', status);
     }
 
     function stopTimer() {
@@ -244,6 +246,34 @@ angular.module('ionic-audio').factory('MediaManager', ['$interval', '$timeout', 
 
         }, 1000);
     }
+
+    function rewindSec(rewindSec) {
+      currentMedia.getCurrentPosition(function(position) {
+        seekTo(position-rewindSec);
+      },function(e) {
+        console.log("Error getting pos=" + e);
+      });
+    }
+
+    function moveTo(sec){
+      currentMedia.getCurrentPosition(function(position) {
+        seekTo(sec);
+      },function(e) {
+        console.log("Error getting pos=" + e);
+      });
+    }
+
+    function setRate(rate){
+      currentMedia.setRate(rate);
+    }
+
+    function forwardSec(forwardSec) {
+      currentMedia.getCurrentPosition(function(position) {
+        seekTo(position+forwardSec);
+      },function(e) {
+        console.log("Error getting pos=" + e);
+      });
+    }
 }]);
 angular.module('ionic-audio').directive('ionAudioTrack', ['MediaManager', '$rootScope', ionAudioTrack]);
 
@@ -274,7 +304,7 @@ function ionAudioTrack(MediaManager, $rootScope) {
             newTrack.progress = 0;
             newTrack.status = 0;
             newTrack.duration = -1;
-            if (oldTrack && oldTrack.id !== undefined) newTrack.id = oldTrack.id; 
+            if (oldTrack && oldTrack.id !== undefined) newTrack.id = oldTrack.id;
 
             if (MediaManager) {
                 MediaManager.add(newTrack, playbackSuccess, null, statusChange, progressChange);
@@ -291,6 +321,10 @@ function ionAudioTrack(MediaManager, $rootScope) {
         var progressChange = function(progress, duration) {
             $scope.track.progress = progress;
             $scope.track.duration = duration;
+
+            if(duration > 0){
+              $rootScope.$broadcast('ionic-audio:trackProgress', duration,progress);
+            }
         };
         var notifyProgressBar = function() {
             $rootScope.$broadcast('ionic-audio:trackChange', $scope.track);
@@ -315,8 +349,8 @@ function ionAudioTrack(MediaManager, $rootScope) {
             return $scope.track.id;
         };
 
-        var unbindWatcher = $scope.$watch('track', function(newTrack, oldTrack) {  
-            if (newTrack === undefined) return;         
+        var unbindWatcher = $scope.$watch('track', function(newTrack, oldTrack) {
+            if (newTrack === undefined) return;
             MediaManager.stop();
             init(newTrack, oldTrack);
         });
